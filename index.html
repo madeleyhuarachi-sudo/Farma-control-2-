@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#176b4d">
+  <title>FARMA CONTROL</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <style>
+    :root{font-family:system-ui,Arial,sans-serif;color:#18352b;background:#f3f7f4}
+    *{box-sizing:border-box}body{margin:0}header{background:#176b4d;color:white;padding:22px 16px}
+    header h1{margin:0;font-size:1.5rem}header p{margin:6px 0 0}
+    main{max-width:900px;margin:auto;padding:16px}.panel{background:white;border-radius:16px;padding:16px;margin:14px 0;box-shadow:0 2px 12px #153b2512}
+    h2{font-size:1.15rem;margin:0 0 12px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px}
+    label{display:block;font-size:.9rem;font-weight:600;margin-bottom:5px}input,select,textarea,button{font:inherit;width:100%;padding:11px;border:1px solid #cbd8d0;border-radius:10px;background:white}
+    textarea{min-height:70px}button{background:#176b4d;color:white;border:0;font-weight:700;cursor:pointer;margin-top:10px}
+    button.secondary{background:#e7f1eb;color:#176b4d}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+    .stat{background:#edf5ef;border-radius:12px;padding:12px;text-align:center}.stat strong{display:block;font-size:1.5rem}
+    .tablewrap{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:.9rem}th,td{text-align:left;padding:10px;border-bottom:1px solid #e4ebe6;white-space:nowrap}
+    .tag{padding:4px 8px;border-radius:20px;font-size:.78rem;background:#e6f2e9}.expired{background:#ffe5e5;color:#a31d1d}.soon{background:#fff1d5;color:#815300}
+    .muted{color:#5c7065;font-size:.85rem}.actions{display:flex;gap:8px}.actions button{min-width:90px}
+  </style>
+</head>
+<body>
+<header><h1>💊 FARMA CONTROL</h1><p>Control académico de inventario, vencimientos y almacenamiento</p></header>
+<main>
+  <section class="panel">
+    <h2>Resumen del inventario</h2>
+    <div class="stats">
+      <div class="stat"><strong id="total">0</strong><span>Registros</span></div>
+      <div class="stat"><strong id="expired">0</strong><span>Vencidos</span></div>
+      <div class="stat"><strong id="soon">0</strong><span>Por vencer</span></div>
+    </div>
+  </section>
+  <section class="panel">
+    <h2>Registrar medicamento</h2>
+    <form id="form">
+      <div class="grid">
+        <div><label for="name">Nombre del medicamento *</label><input id="name" required placeholder="Ej. Paracetamol"></div>
+        <div><label for="strength">Concentración / presentación</label><input id="strength" placeholder="500 mg, tabletas"></div>
+        <div><label for="lot">Número de lote *</label><input id="lot" required></div>
+        <div><label for="qty">Cantidad *</label><input id="qty" type="number" min="0" required></div>
+        <div><label for="expiry">Fecha de vencimiento *</label><input id="expiry" type="date" required></div>
+        <div><label for="storage">Condición de almacenamiento</label><input id="storage" placeholder="Según fabricante"></div>
+      </div>
+      <p><label for="notes">Observaciones</label><textarea id="notes" placeholder="Ubicación, temperatura indicada, etc."></textarea></p>
+      <button type="submit">Guardar medicamento</button>
+    </form>
+    <p class="muted">Registra las condiciones de almacenamiento indicadas por el fabricante. Los productos vencidos deben identificarse y separarse; no dispensarlos.</p>
+  </section>
+  <section class="panel">
+    <h2>Medicamentos registrados</h2>
+    <input id="search" placeholder="Buscar por nombre o lote..." aria-label="Buscar">
+    <div class="tablewrap"><table><thead><tr><th>Medicamento</th><th>Lote</th><th>Cantidad</th><th>Vencimiento</th><th>Estado</th><th></th></tr></thead><tbody id="rows"></tbody></table></div>
+    <button class="secondary" id="export">Exportar inventario CSV</button>
+  </section>
+  <p class="muted">Prototipo académico. Los datos se guardan en este navegador y dispositivo; no se sincronizan automáticamente con otros equipos. Realiza copias de seguridad. No sustituye los procedimientos ni la normativa aplicable.</p>
+</main>
+<script>
+const KEY='farma-control-items-v1';
+let items=JSON.parse(localStorage.getItem(KEY)||'[]');
+const $=id=>document.getElementById(id);
+function status(date){
+ const today=new Date();today.setHours(0,0,0,0);
+ const d=new Date(date+'T00:00:00');const days=Math.ceil((d-today)/86400000);
+ if(days<0)return ['Vencido','expired'];
+ if(days<=90)return ['Por vencer','soon'];
+ return ['Vigente',''];
+}
+function render(){
+ const q=$('search').value.toLowerCase();
+ $('total').textContent=items.length;
+ $('expired').textContent=items.filter(x=>status(x.expiry)[0]==='Vencido').length;
+ $('soon').textContent=items.filter(x=>status(x.expiry)[0]==='Por vencer').length;
+ $('rows').innerHTML='';
+ items.filter(x=>(x.name+' '+x.lot).toLowerCase().includes(q)).forEach((x)=>{
+  const s=status(x.expiry),tr=document.createElement('tr');
+  [x.name+(x.strength?' · '+x.strength:''),x.lot,x.qty,x.expiry].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.appendChild(td)});
+  const td=document.createElement('td'),span=document.createElement('span');span.className='tag '+s[1];span.textContent=s[0];td.appendChild(span);tr.appendChild(td);
+  const act=document.createElement('td'),b=document.createElement('button');b.textContent='Eliminar';b.className='secondary';b.onclick=()=>{if(confirm('¿Eliminar este registro?')){items=items.filter(y=>y.id!==x.id);save()}};act.appendChild(b);tr.appendChild(act);$('rows').appendChild(tr);
+ });
+}
+function save(){localStorage.setItem(KEY,JSON.stringify(items));render()}
+$('form').addEventListener('submit',e=>{
+ e.preventDefault();items.push({id:Date.now(),name:$('name').value.trim(),strength:$('strength').value.trim(),lot:$('lot').value.trim(),qty:Number($('qty').value),expiry:$('expiry').value,storage:$('storage').value.trim(),notes:$('notes').value.trim()});e.target.reset();save();
+});
+$('search').addEventListener('input',render);
+$('export').onclick=()=>{
+ const head=['Medicamento','Presentación','Lote','Cantidad','Vencimiento','Almacenamiento','Observaciones'];
+ const rows=items.map(x=>[x.name,x.strength,x.lot,x.qty,x.expiry,x.storage,x.notes]);
+ const csv=[head,...rows].map(r=>r.map(v=>'"'+String(v??'').replaceAll('"','""')+'"').join(',')).join('\n');
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));a.download='inventario-farma-control.csv';a.click();URL.revokeObjectURL(a.href);
+};
+if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js'));
+render();
+</script>
+</body></html>
